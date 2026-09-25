@@ -32,4 +32,16 @@ describe("initial migration", () => {
     expect(migration).toContain("geography(Point, 4326)");
     expect(migration).toContain("USING gist (geom)");
   });
+
+  it("adds geofence subscriptions with a dedup match table in migration 0003", () => {
+    const followup = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../migrations/0003_geofence_subscriptions.sql"),
+      "utf8"
+    );
+    expect(followup).toContain("CREATE TABLE geofence_subscriptions");
+    expect(followup).toContain("CREATE TABLE geofence_subscription_matches");
+    expect(followup).toContain("PRIMARY KEY (subscription_id, feature_id)");
+    expect(followup).toContain("geography(Point, 4326)");
+    expect(followup).toContain("'instant', 'daily', 'weekly'");
+  });
 });

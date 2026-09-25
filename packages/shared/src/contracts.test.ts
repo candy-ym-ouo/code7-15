@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { featurePayloadSchema, privacyRegionSchema } from "./contracts";
+import { featurePayloadSchema, geofenceSubscriptionSchema, geofenceSubscriptionUpdateSchema, privacyRegionSchema } from "./contracts";
 
 describe("featurePayloadSchema", () => {
   it("accepts a valid bench", () => {
@@ -60,5 +60,51 @@ describe("feature media ids", () => {
       mediaIds: [id, id]
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("geofenceSubscriptionSchema", () => {
+  const valid = {
+    name: "公司附近",
+    longitude: 116.397,
+    latitude: 39.908,
+    radiusM: 1000,
+    categoryKeys: ["bench", "drinking_water"],
+    frequency: "daily",
+    isActive: true
+  };
+
+  it("accepts a valid subscription and applies defaults", () => {
+    const result = geofenceSubscriptionSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+    const withDefaults = geofenceSubscriptionSchema.safeParse({
+      name: "家门口",
+      longitude: 116.3,
+      latitude: 39.9,
+      radiusM: 500
+    });
+    expect(withDefaults.success).toBe(true);
+    if (withDefaults.success) {
+      expect(withDefaults.data.categoryKeys).toEqual([]);
+      expect(withDefaults.data.frequency).toBe("instant");
+      expect(withDefaults.data.isActive).toBe(true);
+    }
+  });
+
+  it("rejects out-of-range radius and unknown categories", () => {
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, radiusM: 50 }).success).toBe(false);
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, radiusM: 50_000 }).success).toBe(false);
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, categoryKeys: ["parking"] }).success).toBe(false);
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, frequency: "hourly" }).success).toBe(false);
+  });
+
+  it("rejects duplicate category keys", () => {
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, categoryKeys: ["bench", "bench"] }).success).toBe(false);
+  });
+
+  it("update schema allows partial payloads but still validates values", () => {
+    expect(geofenceSubscriptionUpdateSchema.safeParse({ name: "新名字" }).success).toBe(true);
+    expect(geofenceSubscriptionUpdateSchema.safeParse({ radiusM: 10 }).success).toBe(false);
+    expect(geofenceSubscriptionUpdateSchema.safeParse({ categoryKeys: ["bench", "bench"] }).success).toBe(false);
   });
 });

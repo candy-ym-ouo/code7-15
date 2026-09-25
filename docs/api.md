@@ -73,6 +73,17 @@
 | `GET` | `/me/notifications` | 通知列表 |
 | `POST` | `/me/notifications/:id/read` | 标记已读 |
 
+## 地理围栏订阅
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/me/subscriptions` | 创建订阅（圆心、半径、分类、频率），创建即对存量已发布要素重算 |
+| `GET` | `/me/subscriptions` | 我的订阅列表 |
+| `PATCH` | `/me/subscriptions/:id` | 局部更新；范围变化自动重算，频率切换自动结清/重排摘要 |
+| `DELETE` | `/me/subscriptions/:id` | 删除订阅 |
+
+设计与去重、可见性约束详见 [地理围栏订阅](geofence.md)。
+
 ## 审核接口
 
 | 方法 | 路径 | 说明 |

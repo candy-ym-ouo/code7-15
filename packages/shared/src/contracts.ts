@@ -212,6 +212,40 @@ export const confirmationSchema = z.object({
   note: z.string().trim().max(500).optional()
 });
 
+export const GEOFENCE_FREQUENCIES = ["instant", "daily", "weekly"] as const;
+export type GeofenceFrequency = (typeof GEOFENCE_FREQUENCIES)[number];
+
+export const GEOFENCE_RADIUS_MIN_M = 100;
+export const GEOFENCE_RADIUS_MAX_M = 20_000;
+export const GEOFENCE_MAX_PER_USER = 20;
+
+const geofenceSubscriptionBase = z.object({
+  name: z.string().trim().min(1).max(60),
+  longitude: z.number().min(-180).max(180),
+  latitude: z.number().min(-90).max(90),
+  radiusM: z.number().int().min(GEOFENCE_RADIUS_MIN_M).max(GEOFENCE_RADIUS_MAX_M),
+  categoryKeys: z.array(z.enum(categoryKeys)).max(categoryKeys.length).default([]),
+  frequency: z.enum(GEOFENCE_FREQUENCIES).default("instant"),
+  isActive: z.boolean().default(true)
+});
+
+function refineUniqueCategoryKeys(value: { categoryKeys?: CategoryKey[] | undefined }, context: z.RefinementCtx) {
+  const keys = value.categoryKeys ?? [];
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["categoryKeys"],
+      message: "Category keys must be unique"
+    });
+  }
+}
+
+export const geofenceSubscriptionSchema = geofenceSubscriptionBase.superRefine(refineUniqueCategoryKeys);
+export const geofenceSubscriptionUpdateSchema = geofenceSubscriptionBase.partial().superRefine(refineUniqueCategoryKeys);
+
+export type GeofenceSubscriptionInput = z.infer<typeof geofenceSubscriptionSchema>;
+export type GeofenceSubscriptionUpdateInput = z.infer<typeof geofenceSubscriptionUpdateSchema>;
+
 export const categoryDefinitions = [
   {
     key: "bench",

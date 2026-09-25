@@ -8,6 +8,7 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().min(1),
+  APP_ORIGIN: z.string().url().default("http://localhost:5173"),
   REDIS_URL: z.string().min(1).default("redis://localhost:6379/0"),
   S3_ENDPOINT: z.string().url(),
   S3_PUBLIC_ENDPOINT: z.string().url(),

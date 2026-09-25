@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts",
+    "./geofence": "./src/geofence.ts",
     "./server": "./src/server.ts"
   },
   "scripts": {

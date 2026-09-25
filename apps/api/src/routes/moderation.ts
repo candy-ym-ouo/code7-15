@@ -6,6 +6,7 @@ import { AppError, conflict, notFound } from "../errors";
 import { requireAdmin, requireModerator } from "../auth";
 import { recordAudit } from "../audit";
 import { notifyUser } from "../notifications";
+import { matchSubscriptionsForFeature } from "../geofence";
 
 export async function moderationRoutes(app: FastifyInstance) {
   app.get("/moderation/queue", { preHandler: requireModerator }, async () => {
@@ -120,6 +121,8 @@ export async function moderationRoutes(app: FastifyInstance) {
         resourceId: params.id,
         metadata: { revisionId: revision.id }
       });
+      // 发布后增量匹配地理围栏订阅；仅匹配已发布要素，去重由匹配表保证
+      await matchSubscriptionsForFeature(client, params.id);
       await notifyUser(client, {
         userId: revision.author_id,
         type: "feature_approved",
@@ -250,6 +253,8 @@ export async function moderationRoutes(app: FastifyInstance) {
         resourceType: "feature",
         resourceId: params.id
       });
+      // 恢复可见后重新匹配；历史匹配已去重，不会重复通知
+      await matchSubscriptionsForFeature(client, params.id);
     });
     return { status: "published" };
   });
@@ -355,6 +360,8 @@ export async function moderationRoutes(app: FastifyInstance) {
       if (input.action === "restore") {
         if (report.target_type === "feature") {
           await client.query("UPDATE map_features SET status = 'published', updated_at = now() WHERE id = $1 AND current_revision_id IS NOT NULL", [report.target_id]);
+          // 恢复可见后重新匹配订阅；匹配表主键保证不重复通知
+          await matchSubscriptionsForFeature(client, report.target_id);
         } else {
           await client.query("UPDATE comments SET status = 'published', updated_at = now() WHERE id = $1", [report.target_id]);
         }
