@@ -212,6 +212,62 @@ export const confirmationSchema = z.object({
   note: z.string().trim().max(500).optional()
 });
 
+export const SUBSCRIPTION_FREQUENCIES = ["instant", "daily", "weekly"] as const;
+export type SubscriptionFrequency = (typeof SUBSCRIPTION_FREQUENCIES)[number];
+
+export const GEOFENCE_LIMITS = {
+  minRadiusM: 100,
+  maxRadiusM: 50_000,
+  maxNameLength: 60,
+  maxActivePerUser: 20
+} as const;
+
+const geofenceScopeFields = {
+  longitude: z.number().min(-180).max(180),
+  latitude: z.number().min(-90).max(90),
+  radiusM: z.number().int().min(GEOFENCE_LIMITS.minRadiusM).max(GEOFENCE_LIMITS.maxRadiusM),
+  categoryKeys: z.array(z.enum(categoryKeys)).max(categoryKeys.length).default([])
+};
+
+function refineCategoryKeys(value: { categoryKeys?: CategoryKey[] | undefined }, context: z.RefinementCtx) {
+  const keys = value.categoryKeys ?? [];
+  if (new Set(keys).size !== keys.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["categoryKeys"],
+      message: "Category keys must be unique"
+    });
+  }
+}
+
+export const geofenceSubscriptionSchema = z.object({
+  name: z.string().trim().min(1).max(GEOFENCE_LIMITS.maxNameLength),
+  ...geofenceScopeFields,
+  frequency: z.enum(SUBSCRIPTION_FREQUENCIES).default("daily")
+}).superRefine(refineCategoryKeys);
+
+export const updateGeofenceSubscriptionSchema = z.object({
+  name: z.string().trim().min(1).max(GEOFENCE_LIMITS.maxNameLength).optional(),
+  longitude: geofenceScopeFields.longitude.optional(),
+  latitude: geofenceScopeFields.latitude.optional(),
+  radiusM: geofenceScopeFields.radiusM.optional(),
+  categoryKeys: geofenceScopeFields.categoryKeys.optional(),
+  frequency: z.enum(SUBSCRIPTION_FREQUENCIES).optional(),
+  isActive: z.boolean().optional()
+}).superRefine((value, context) => {
+  refineCategoryKeys(value, context);
+  if ((value.longitude === undefined) !== (value.latitude === undefined)) {
+    context.addIssue({
+      code: "custom",
+      path: ["longitude"],
+      message: "Longitude and latitude must be updated together"
+    });
+  }
+});
+
+export type GeofenceSubscriptionInput = z.infer<typeof geofenceSubscriptionSchema>;
+export type UpdateGeofenceSubscriptionInput = z.infer<typeof updateGeofenceSubscriptionSchema>;
+
 export const categoryDefinitions = [
   {
     key: "bench",

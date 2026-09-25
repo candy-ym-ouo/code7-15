@@ -32,4 +32,20 @@ describe("initial migration", () => {
     expect(migration).toContain("geography(Point, 4326)");
     expect(migration).toContain("USING gist (geom)");
   });
+
+  it("adds geofence subscription tables in migration 0003", () => {
+    const followup = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../migrations/0003_geofence_subscriptions.sql"),
+      "utf8"
+    );
+    for (const table of ["geofence_subscriptions", "geofence_matches", "geofence_scan_events"]) {
+      expect(followup).toContain(`CREATE TABLE ${table}`);
+    }
+    // 去重根基：同一订阅对同一内容只保留一条匹配
+    expect(followup).toContain("PRIMARY KEY (subscription_id, feature_id)");
+    // 重算游标与频率
+    expect(followup).toContain("scope_version");
+    expect(followup).toContain("recomputed_version");
+    expect(followup).toContain("'instant', 'daily', 'weekly'");
+  });
 });

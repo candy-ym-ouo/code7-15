@@ -6,6 +6,8 @@ import { AppError, conflict, notFound } from "../errors";
 import { requireAdmin, requireModerator } from "../auth";
 import { recordAudit } from "../audit";
 import { notifyUser } from "../notifications";
+import { recordFeaturePublishedScan } from "../geofence";
+import { enqueueGeofenceScan } from "../queue";
 
 export async function moderationRoutes(app: FastifyInstance) {
   app.get("/moderation/queue", { preHandler: requireModerator }, async () => {
@@ -120,6 +122,7 @@ export async function moderationRoutes(app: FastifyInstance) {
         resourceId: params.id,
         metadata: { revisionId: revision.id }
       });
+      await recordFeaturePublishedScan(client, params.id);
       await notifyUser(client, {
         userId: revision.author_id,
         type: "feature_approved",
@@ -128,6 +131,7 @@ export async function moderationRoutes(app: FastifyInstance) {
         link: `/features/${params.id}`
       });
     });
+    await enqueueGeofenceScan(params.id);
     return { status: "published" };
   });
 
@@ -235,9 +239,9 @@ export async function moderationRoutes(app: FastifyInstance) {
 
   app.post("/moderation/features/:id/restore", { preHandler: requireAdmin }, async (request) => {
     const params = z.object({ id: z.string().uuid() }).parse(request.params);
-    await transaction(async (client) => {
-      const result = await client.query<{ current_revision_id: string | null }>(
-        "SELECT current_revision_id FROM map_features WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
+    const becameVisible = await transaction(async (client) => {
+      const result = await client.query<{ current_revision_id: string | null; status: string }>(
+        "SELECT current_revision_id, status FROM map_features WHERE id = $1 AND deleted_at IS NULL FOR UPDATE",
         [params.id]
       );
       const feature = result.rows[0];
@@ -250,7 +254,13 @@ export async function moderationRoutes(app: FastifyInstance) {
         resourceType: "feature",
         resourceId: params.id
       });
+      if (feature.status !== "published") {
+        await recordFeaturePublishedScan(client, params.id);
+        return true;
+      }
+      return false;
     });
+    if (becameVisible) await enqueueGeofenceScan(params.id);
     return { status: "published" };
   });
 
@@ -340,7 +350,7 @@ export async function moderationRoutes(app: FastifyInstance) {
       notes: z.string().trim().max(1000).optional()
     }).parse(request.body);
 
-    await transaction(async (client) => {
+    const restoredFeatureId = await transaction(async (client) => {
       const reportResult = await client.query<{ target_type: string; target_id: string; reporter_id: string }>(
         "SELECT target_type, target_id, reporter_id FROM reports WHERE id = $1 AND status = 'open' FOR UPDATE",
         [params.id]
@@ -352,9 +362,19 @@ export async function moderationRoutes(app: FastifyInstance) {
         const table = report.target_type === "feature" ? "map_features" : "comments";
         await client.query(`UPDATE ${table} SET status = 'hidden', updated_at = now() WHERE id = $1`, [report.target_id]);
       }
+      let republished = false;
       if (input.action === "restore") {
         if (report.target_type === "feature") {
-          await client.query("UPDATE map_features SET status = 'published', updated_at = now() WHERE id = $1 AND current_revision_id IS NOT NULL", [report.target_id]);
+          const restored = await client.query(
+            `UPDATE map_features SET status = 'published', updated_at = now()
+             WHERE id = $1 AND current_revision_id IS NOT NULL AND status <> 'published'
+             RETURNING id`,
+            [report.target_id]
+          );
+          if (restored.rowCount) {
+            await recordFeaturePublishedScan(client, report.target_id);
+            republished = true;
+          }
         } else {
           await client.query("UPDATE comments SET status = 'published', updated_at = now() WHERE id = $1", [report.target_id]);
         }
@@ -378,7 +398,9 @@ export async function moderationRoutes(app: FastifyInstance) {
         body: input.status === "resolved" ? "审核员已完成处理。" : "审核员已完成核查，本次举报被驳回。",
         link: "/me/notifications"
       });
+      return republished ? report.target_id : null;
     });
+    if (restoredFeatureId) await enqueueGeofenceScan(restoredFeatureId);
     return { status: input.status };
   });
 

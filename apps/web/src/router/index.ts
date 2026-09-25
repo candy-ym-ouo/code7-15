@@ -12,6 +12,7 @@ const ContributionsPage = () => import("../pages/ContributionsPage.vue");
 const NotificationsPage = () => import("../pages/NotificationsPage.vue");
 const CommentsPage = () => import("../pages/CommentsPage.vue");
 const SettingsPage = () => import("../pages/SettingsPage.vue");
+const SubscriptionsPage = () => import("../pages/SubscriptionsPage.vue");
 const ModerationPage = () => import("../pages/ModerationPage.vue");
 
 export const router = createRouter({
@@ -29,6 +30,7 @@ export const router = createRouter({
     { path: "/me/contributions", name: "contributions", component: ContributionsPage, meta: { requiresAuth: true } },
     { path: "/me/comments", name: "comments", component: CommentsPage, meta: { requiresAuth: true } },
     { path: "/me/notifications", name: "notifications", component: NotificationsPage, meta: { requiresAuth: true } },
+    { path: "/me/subscriptions", name: "subscriptions", component: SubscriptionsPage, meta: { requiresAuth: true } },
     { path: "/me/settings", name: "settings", component: SettingsPage, meta: { requiresAuth: true } },
     { path: "/moderation", name: "moderation", component: ModerationPage, meta: { requiresAuth: true, requiresModerator: true } },
     { path: "/:pathMatch(.*)*", redirect: "/map" }

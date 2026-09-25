@@ -73,6 +73,18 @@
 | `GET` | `/me/notifications` | 通知列表 |
 | `POST` | `/me/notifications/:id/read` | 标记已读 |
 
+## 区域订阅接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/subscriptions` | 创建围栏订阅（需已验证邮箱，每账号上限 20） |
+| `GET` | `/subscriptions` | 我的订阅列表，含重算同步状态 |
+| `PATCH` | `/subscriptions/:id` | 更新；范围变化触发存量重算 |
+| `DELETE` | `/subscriptions/:id` | 软删除订阅 |
+| `GET` | `/subscriptions/:id/matches` | 命中预览（仅当前公开可见内容） |
+
+订阅与匹配语义详见 [地理围栏订阅模块](geofence-subscriptions.md)。
+
 ## 审核接口
 
 | 方法 | 路径 | 说明 |

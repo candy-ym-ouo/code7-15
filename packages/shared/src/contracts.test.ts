@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { featurePayloadSchema, privacyRegionSchema } from "./contracts";
+import {
+  featurePayloadSchema,
+  geofenceSubscriptionSchema,
+  privacyRegionSchema,
+  updateGeofenceSubscriptionSchema
+} from "./contracts";
 
 describe("featurePayloadSchema", () => {
   it("accepts a valid bench", () => {
@@ -60,5 +65,51 @@ describe("feature media ids", () => {
       mediaIds: [id, id]
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("geofenceSubscriptionSchema", () => {
+  const valid = {
+    name: "家附近",
+    longitude: 116.39,
+    latitude: 39.9,
+    radiusM: 2000,
+    categoryKeys: ["bench", "drinking_water"],
+    frequency: "daily"
+  };
+
+  it("accepts a valid subscription and defaults", () => {
+    const result = geofenceSubscriptionSchema.safeParse({ name: "公司周边", longitude: 121.47, latitude: 31.23, radiusM: 500 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.categoryKeys).toEqual([]);
+      expect(result.data.frequency).toBe("daily");
+    }
+  });
+
+  it("rejects radius outside the allowed range", () => {
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, radiusM: 50 }).success).toBe(false);
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, radiusM: 100_000 }).success).toBe(false);
+  });
+
+  it("rejects duplicate or unknown category keys", () => {
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, categoryKeys: ["bench", "bench"] }).success).toBe(false);
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, categoryKeys: ["bench", "spaceship"] }).success).toBe(false);
+  });
+
+  it("rejects unknown frequency", () => {
+    expect(geofenceSubscriptionSchema.safeParse({ ...valid, frequency: "hourly" }).success).toBe(false);
+  });
+});
+
+describe("updateGeofenceSubscriptionSchema", () => {
+  it("requires longitude and latitude to be updated together", () => {
+    expect(updateGeofenceSubscriptionSchema.safeParse({ longitude: 116.4 }).success).toBe(false);
+    expect(updateGeofenceSubscriptionSchema.safeParse({ longitude: 116.4, latitude: 39.9 }).success).toBe(true);
+  });
+
+  it("allows partial non-scope updates", () => {
+    const result = updateGeofenceSubscriptionSchema.safeParse({ frequency: "weekly", isActive: false });
+    expect(result.success).toBe(true);
   });
 });

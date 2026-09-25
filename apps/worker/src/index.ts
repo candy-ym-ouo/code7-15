@@ -5,16 +5,27 @@ import { pool } from "./db";
 import { processMediaJob, cleanupOriginalMedia, cleanupDeletedMediaObjects, markStaleFeatures, recoverStuckMedia, markUnreferencedMediaDeleted } from "./media-job";
 import { dispatchOutbox, recoverStuckOutbox } from "./outbox";
 import { purgeDeletedAccounts } from "./account-job";
+import {
+  processFeatureScan,
+  processPendingGeofenceScans,
+  purgeInvisibleMatches,
+  purgeOldGeofenceScanEvents,
+  recomputeSubscription,
+  recomputeSubscriptions,
+  sendSubscriptionDigests
+} from "./geofence-job";
 
 const redisOptions = { maxRetriesPerRequest: null } as const;
 const queueConnection = new IORedis(config.REDIS_URL, redisOptions);
 const mediaWorkerConnection = new IORedis(config.REDIS_URL, redisOptions);
 const outboxWorkerConnection = new IORedis(config.REDIS_URL, redisOptions);
+const geofenceWorkerConnection = new IORedis(config.REDIS_URL, redisOptions);
 
 for (const [name, connection] of [
   ["queue", queueConnection],
   ["media worker", mediaWorkerConnection],
-  ["outbox worker", outboxWorkerConnection]
+  ["outbox worker", outboxWorkerConnection],
+  ["geofence worker", geofenceWorkerConnection]
 ] as const) {
   connection.on("error", (error) => console.error({ error, connection: name }, "Redis connection error"));
 }
@@ -30,8 +41,17 @@ const outboxWorker = new Worker("outbox", async (job) => {
   await dispatchOutbox(job.data?.eventId ? String(job.data.eventId) : undefined);
 }, { connection: outboxWorkerConnection, concurrency: 2 });
 
+const geofenceWorker = new Worker("geofence", async (job) => {
+  if (job.name === "scan-feature") {
+    await processFeatureScan(String(job.data.featureId));
+  } else if (job.name === "recompute-subscription") {
+    await recomputeSubscription(String(job.data.subscriptionId));
+  }
+}, { connection: geofenceWorkerConnection, concurrency: 2 });
+
 mediaWorker.on("failed", (job, error) => console.error({ jobId: job?.id, error }, "media job failed"));
 outboxWorker.on("failed", (job, error) => console.error({ jobId: job?.id, error }, "outbox job failed"));
+geofenceWorker.on("failed", (job, error) => console.error({ jobId: job?.id, error }, "geofence job failed"));
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
@@ -63,6 +83,11 @@ async function maintenanceTick() {
     await cleanupDeletedMediaObjects();
     await markStaleFeatures();
     await purgeDeletedAccounts();
+    await processPendingGeofenceScans();
+    await recomputeSubscriptions();
+    await sendSubscriptionDigests();
+    await purgeInvisibleMatches();
+    await purgeOldGeofenceScanEvents();
   } catch (error) {
     console.error({ error }, "maintenance tick failed");
   } finally {
@@ -77,8 +102,8 @@ maintenanceTimer.unref();
 async function shutdown(signal: string) {
   console.log(`worker shutting down: ${signal}`);
   clearInterval(maintenanceTimer);
-  await Promise.all([mediaWorker.close(), outboxWorker.close(), mediaQueue.close()]);
-  for (const connection of [queueConnection, mediaWorkerConnection, outboxWorkerConnection]) {
+  await Promise.all([mediaWorker.close(), outboxWorker.close(), geofenceWorker.close(), mediaQueue.close()]);
+  for (const connection of [queueConnection, mediaWorkerConnection, outboxWorkerConnection, geofenceWorkerConnection]) {
     if (connection.status !== "end") connection.disconnect();
   }
   await pool.end();
